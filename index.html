@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestão de Gás</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <style>
+        /* --- ESTILOS GLOBAIS E DE LAYOUT --- */
+        body { 
+            font-family: 'Poppins', sans-serif; 
+            background: linear-gradient(135deg, #f4f4f9 0%, #e0e0e0 100%);
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+            margin: 0; 
+            color: #333;
+        }
+        h1, h2 { font-weight: 600; color: #1e3a8a; }
+        .main-container {
+            width: 95%; 
+            max-width: 1200px;
+            padding: 30px;
+            background-color: #ffffff;
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* --- LOGIN --- */
+        .login-container { max-width: 380px; margin: 50px auto; padding: 40px 30px; border: 1px solid #e0e7ff; border-radius: 10px; text-align: center; }
+        .input-group { margin-bottom: 20px; }
+        .input-group label { display: block; margin-bottom: 8px; color: #1e3a8a; font-weight: 600; }
+        .input-group input { width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px 15px; background-color: #5c67f2; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background-color 0.3s; margin-top: 15px; }
+        button:hover { background-color: #4a54e1; }
+        
+        /* --- DASHBOARD E CONTROLES --- */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; flex-wrap: wrap; }
+        .dashboard-controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .control-button { width: auto; margin: 0; padding: 10px 20px; font-size: 0.9rem; }
+        #priceBtn { background-color: #059669; }
+        #reportsLink { text-decoration: none; background-color: #1e3a8a; padding: 12px 15px; border-radius: 8px; color: white; font-weight: 600; }
+        #logoutBtn { background-color: #ef4444; width: auto; margin: 0; padding: 8px 15px; }
+        
+        /* Filtros */
+        .filter-controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .filter-controls button { width: auto; margin: 0; padding: 8px 15px; font-size: 0.9rem; }
+        .filter-controls .active-filter { border: 2px solid #1e3a8a; background-color: #e0e7ff; color: #1e3a8a; }
+        
+        /* CARDS DE ESTATÍSTICAS */
+        .stats-cards { display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; justify-content: flex-start; }
+        .stat-card { flex: 1 1 180px; padding: 15px; border-radius: 8px; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08); background-color: #fff; text-align: center; }
+        .stat-card h3 { margin-top: 0; font-size: 0.8rem; color: #6b7280; font-weight: 600; white-space: nowrap; }
+        .stat-card p { font-size: 2rem; font-weight: 700; margin: 5px 0 0; }
+        .stat-card.pendente { border-left: 5px solid #f59e0b; }
+        .stat-card.a-caminho { border-left: 5px solid #0ea5e9; }
+        .stat-card.concluido { border-left: 5px solid #10b981; }
+        .stat-card.cancelado { border-left: 5px solid #ef4444; }
+        
+        /* TABELA BASE */
+        table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 20px; }
+        th, td { padding: 10px; border: none; border-bottom: 1px solid #e5e7eb; font-size: 0.9rem; text-align: left; }
+        th { background-color: #5c67f2; color: white; font-weight: 600; text-transform: uppercase; font-size: 0.8rem; }
+        tr:nth-child(even) { background-color: #f9fafb; }
+        .status { padding: 5px 10px; border-radius: 4px; font-weight: 600; display: inline-block; font-size: 0.8rem;}
+        .status-Pendente { background-color: #fffbeb; color: #f59e0b; border: 1px solid #fcd34d; }
+        .status-ACaminho { background-color: #e0f2fe; color: #0ea5e9; border: 1px solid #38bdf8; }
+        .status-Concluido { background-color: #ecfdf5; color: #10b981; border: 1px solid #34d399; }
+        .status-Cancelado { background-color: #fef2f2; color: #ef4444; border: 1px solid #f87171; }
+        .address-cell { white-space: normal; max-width: 150px; overflow-wrap: break-word; }
+
+        /* Dropdown */
+        .dropdown { position: relative; display: inline-block; }
+        .dropbtn { background-color: #6b7280; color: white; padding: 8px 12px; font-size: 14px; border: none; cursor: pointer; border-radius: 6px; width: auto; margin: 0; transition: background-color 0.3s; }
+        .dropdown-content { display: none; position: absolute; right: 0; background-color: #f9f9f9; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; border-radius: 6px; overflow: hidden; }
+        .dropdown-content.show-dropdown { display: block; } 
+        .dropdown-content button { color: #333; padding: 10px 16px; text-decoration: none; display: block; border: none; background: none; text-align: left; width: 100%; font-size: 0.9rem; margin: 0; cursor: pointer; }
+
+        /* MODAL */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); padding-top: 60px; }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 30px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; }
+        .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; }
+
+        /* --- RESPONSIVIDADE PARA CELULARES (MAX-WIDTH: 768PX) --- */
+        @media (max-width: 768px) {
+            
+            .main-container { padding: 15px; }
+
+            /* Ajustes básicos de empilhamento */
+            .header { flex-direction: column; align-items: flex-start; gap: 15px; padding-bottom: 10px; }
+            .dashboard-controls { flex-direction: column; width: 100%; gap: 10px; }
+            .dashboard-controls > * { width: 100%; box-sizing: border-box; }
+            .stats-cards { flex-direction: column; gap: 10px; }
+
+            /* Tabela em modo Cartão (CORREÇÃO DE ALINHAMENTO DO DADO) */
+            table, thead, tbody, th, td, tr { 
+                display: block; 
+                width: 100%; 
+            }
+            
+            thead tr {
+                position: absolute; 
+                top: -9999px;
+                left: -9999px;
+            }
+            
+            tr { 
+                border: 1px solid #ddd; 
+                margin-bottom: 15px; 
+                border-radius: 8px;
+                overflow: hidden; 
+            }
+            
+            /* CÉLULA INDIVIDUAL (td) - FOCO NA VISIBILIDADE DO DADO */
+            td { 
+                border: none;
+                border-bottom: 1px solid #eee; 
+                position: relative;
+                padding-left: 50% !important; /* Reserva 50% de espaço à esquerda para o rótulo */
+                text-align: right !important; /* CRÍTICO: Alinha o CONTEÚDO (o dado) à direita */
+                min-height: 45px; 
+                padding-top: 10px;
+                padding-bottom: 10px;
+                word-wrap: break-word; 
+                line-height: 1.5; 
+            }
+            
+            /* Rótulo (Label) gerado pelo data-label */
+            td:before { 
+                content: attr(data-label); 
+                position: absolute;
+                top: 0; 
+                bottom: 0;
+                left: 10px; 
+                width: 45%; 
+                text-align: left;
+                font-weight: 600;
+                color: #1e3a8a;
+                padding-top: 10px; /* Alinha o padding com o dado */
+                white-space: normal;
+            }
+
+            /* Força o Span de Status a ficar à direita do rótulo */
+            td [class^="status"] {
+                float: right; 
+                margin-right: -5px; /* Ajuste fino */
+            }
+            
+            /* Ajuste para a célula de Ações */
+            td:last-child {
+                border-bottom: 0;
+                text-align: center !important;
+                padding-left: 0 !important;
+                padding-top: 15px;
+                padding-bottom: 15px;
+            }
+            
+            /* Dropdown */
+            .dropdown { display: block; width: 100%; }
+            .dropbtn { width: 80%; margin: 0 auto; display: block; }
+            .dropdown-content { position: static; width: 80%; margin: 5px auto 0; right: auto; }
+            
+            .filter-controls { justify-content: center; }
+            .filter-controls button { flex-grow: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        
+        <p id="loadingMessage" style="text-align: center; padding: 50px; color: #5c67f2;">Verificando estado de autenticação...</p> 
+
+        <div id="loginSection" class="login-container" style="display: none;">
+            <h2>Acesso ao Sistema de Gás</h2>
+            <form id="loginForm">
+                <div class="input-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required>
+                </div>
+                <div class="input-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" id="loginBtn">Entrar</button>
+                <p class="message">
+                    Não tem conta? <a href="#" id="registerLink">Crie uma aqui</a>
+                </p>
+                <p id="feedbackMessage" class="feedback-message"></p>
+            </form>
+        </div>
+
+        <div id="dashboardSection" style="display: none;">
+            <div class="header">
+                <h1>Painel de Gestão de Pedidos 🚀</h1>
+                <div class="dashboard-controls">
+                    <a href="#" id="reportsLink" class="control-button button">📈 Relatórios</a> 
+                    <button id="priceBtn" class="control-button">💵 Alterar Preço</button>
+                    
+                    <span style="margin-right: 15px; font-weight: 600; white-space: nowrap;">Bem-vindo(a), <strong id="userEmail" style="color: #5c67f2;">carregando...</strong></span>
+                    <button id="logoutBtn">Sair</button>
+                </div>
+            </div>
+
+            <div class="stats-cards">
+                <div class="stat-card total"><h3 title="Total de todos os pedidos">Total</h3><p id="totalCount">0</p></div>
+                <div class="stat-card pendente"><h3 title="Aguardando confirmação">Pendentes</h3><p id="pendenteCount">0</p></div>
+                <div class="stat-card a-caminho"><h3 title="Saiu para entrega">A Caminho</h3><p id="aCaminhoCount">0</p></div>
+                <div class="stat-card concluido"><h3 title="Entrega finalizada">Entregue</h3><p id="concluidoCount">0</p></div>
+                <div class="stat-card cancelado"><h3 title="Cancelados por cliente ou admin">Cancelados</h3><p id="canceladoCount">0</p></div>
+            </div>
+            
+            <div class="filter-controls">
+                <button id="showActiveBtn" class="control-button active-filter" style="background-color: #5c67f2; color: white;">Pedidos Ativos</button>
+                <button id="showCompletedBtn" class="control-button" style="background-color: #059669; color: white;">Pedidos Concluídos</button>
+                <button id="showCancelledBtn" class="control-button" style="background-color: #ef4444; color: white;">Pedidos Cancelados</button>
+            </div>
+            
+            <h2><span id="listTitle">Pedidos Ativos (Pendentes e A Caminho)</span></h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Cliente</th>
+                        <th>Tipo</th>
+                        <th>Qtd.</th>
+                        <th>Endereço</th> 
+                        <th>Forma Pag.</th> 
+                        <th>Data/Hora</th>
+                        <th>Status</th>
+                        <th>Ações</th> 
+                    </tr>
+                </thead>
+                <tbody id="pedidosBody">
+                    <tr><td colspan="9" class="no-data">Carregando dados...</td></tr> 
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <div id="priceModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal('priceModal')">&times;</span>
+            <h2>Alterar Preço Atual</h2>
+            
+            <form id="priceForm">
+                <p>Preço atual do Gás: <strong id="currentPrice">R$ 0.00</strong></p>
+                
+                <div class="input-group">
+                    <label for="newPrice">Novo Preço (R$)</label>
+                    <input type="number" id="newPrice" step="0.01" min="1.00" required placeholder="Ex: 105.99">
+                </div>
+                
+                <button type="submit" id="savePriceBtn">Salvar Novo Preço</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // 🚨 CONFIGURAÇÃO DO FIREBASE 🚨
+    const firebaseConfig = {
+            apiKey: "AIzaSyCgmVCXYByZINmC_TQGXf8j23khKolRp4I",
+            authDomain: "gasapp-b48b1.firebaseapp.com",
+            databaseURL: "https://gasapp-b48b1-default-rtdb.firebaseio.com",
+            projectId: "gasapp-b48b1",
+            storageBucket: "gasapp-b48b1.firebasestorage.app",
+            messagingSenderId: "91157049244",
+            appId: "1:91157049244:web:d84da8f96637958d1d2259",
+            measurementId: "G-DW6NQ9NCEE"
+        };
+
+        // Inicialização e Referências
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.database(); 
+        
+        // Cache global para todos os pedidos do DB
+        let todosOsPedidosCache = [];
+        let filtroAtual = 'ativos'; // Estado do filtro
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginSection = document.getElementById('loginSection');
+            const dashboardSection = document.getElementById('dashboardSection');
+            const pedidosBody = document.getElementById('pedidosBody');
+            const feedbackMessage = document.getElementById('feedbackMessage');
+            
+            const totalCount = document.getElementById('totalCount');
+            const pendenteCount = document.getElementById('pendenteCount');
+            const aCaminhoCount = document.getElementById('aCaminhoCount');
+            const concluidoCount = document.getElementById('concluidoCount');
+            const canceladoCount = document.getElementById('canceladoCount');
+            
+            const priceModal = document.getElementById('priceModal');
+            const priceForm = document.getElementById('priceForm');
+            
+            const showActiveBtn = document.getElementById('showActiveBtn');
+            const showCompletedBtn = document.getElementById('showCompletedBtn');
+            const showCancelledBtn = document.getElementById('showCancelledBtn');
+
+            // --- Funções Auxiliares de UI ---
+            window.toggleDropdown = function(element) {
+                document.querySelectorAll(".dropdown-content.show-dropdown").forEach(openDropdown => {
+                    if (openDropdown !== element.querySelector(".dropdown-content")) {
+                        openDropdown.classList.remove("show-dropdown");
+                    }
+                });
+                element.querySelector(".dropdown-content").classList.toggle("show-dropdown");
+            }
+            window.openModal = function(modalId) {
+                document.getElementById(modalId).style.display = "block";
+                if (modalId === 'priceModal') carregarPrecoAtual(); 
+            }
+            window.closeModal = function(modalId) {
+                document.getElementById(modalId).style.display = "none";
+            }
+            document.onclick = function(event) {
+                if (!event.target.matches('.dropbtn')) {
+                    document.querySelectorAll(".dropdown-content.show-dropdown").forEach(openDropdown => {
+                        openDropdown.classList.remove("show-dropdown");
+                    });
+                }
+                if (event.target == priceModal) closeModal('priceModal');
+            }
+
+            // --- Lógica de Autenticação ---
+            auth.onAuthStateChanged((user) => {
+                document.getElementById('loadingMessage').style.display = 'none'; 
+                if (user) {
+                    loginSection.style.display = 'none'; 
+                    dashboardSection.style.display = 'block'; 
+                    document.getElementById('userEmail').textContent = user.email;
+                    // Inicia escutas em tempo real
+                    buscarE_renderizarPedidos();
+                    carregarPrecoAtual(); 
+                } else {
+                    dashboardSection.style.display = 'none';
+                    loginSection.style.display = 'block'; 
+                }
+            });
+
+            document.getElementById('loginForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                const loginBtn = document.getElementById('loginBtn');
+                
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Aguarde...';
+                
+                auth.signInWithEmailAndPassword(email, password)
+                    .catch(() => { 
+                        feedbackMessage.textContent = "Erro no login: Email ou senha inválidos.";
+                        feedbackMessage.className = `feedback-message show error`;
+                        setTimeout(() => { feedbackMessage.classList.remove('show'); }, 5000);
+                    })
+                    .finally(() => { loginBtn.disabled = false; loginBtn.textContent = 'Entrar'; });
+            });
+            
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                auth.signOut().then(() => {
+                    alert("Sessão encerrada! Voltando para o Login.");
+                });
+            });
+
+            // --- Lógica de Preço ---
+            document.getElementById('priceBtn').addEventListener('click', () => openModal('priceModal'));
+
+            function carregarPrecoAtual() {
+                db.ref('config/preco_gas').on('value', (snapshot) => {
+                    let precoAtual = snapshot.exists() ? snapshot.val() : 0.00;
+                    const precoFormatadoBRL = precoAtual.toFixed(2).replace('.', ',');
+                    document.getElementById('currentPrice').textContent = `R$ ${precoFormatadoBRL}`;
+                    document.getElementById('newPrice').value = precoAtual; 
+                });
+            }
+
+            priceForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const novoPreco = parseFloat(document.getElementById('newPrice').value);
+                
+                if (novoPreco > 0) {
+                    db.ref('config').update({ preco_gas: novoPreco })
+                    .then(() => {
+                        alert(`Preço atualizado para R$ ${novoPreco.toFixed(2).replace('.', ',')} com sucesso!`);
+                        closeModal('priceModal');
+                    })
+                    .catch(error => {
+                        alert("Erro ao salvar o preço: " + error.message);
+                    });
+                } else {
+                    alert("Por favor, insira um preço válido.");
+                }
+            });
+
+            // --- Lógica de Pedidos e Filtragem (CORRIGIDA) ---
+
+            function buscarE_renderizarPedidos() {
+                pedidosBody.innerHTML = '<tr><td colspan="9" class="no-data">Buscando dados no Firebase...</td></tr>';
+                
+                db.ref('pedidos').on('value', (snapshot) => {
+                    todosOsPedidosCache = [];
+                    let total = 0, pendentes = 0, aCaminho = 0, concluidos = 0, cancelados = 0;
+
+                    if (!snapshot.exists()) {
+                         // Se não houver dados, garante que o cache e os contadores estejam zerados
+                        todosOsPedidosCache = []; 
+                        total = pendentes = aCaminho = concluidos = cancelados = 0;
+                    }
+
+                    snapshot.forEach((childSnapshot) => {
+                        const pedidoData = childSnapshot.val();
+                        pedidoData.id = childSnapshot.key; 
+                        
+                        const status = (pedidoData.status || 'Pendente').toLowerCase().replace(/\s/g, '').replace('ú', 'u');
+                        total++;
+
+                        if (status === 'pendente') { pendentes++; } 
+                        else if (status.includes('caminho')) { aCaminho++; } 
+                        else if (status === 'entregue' || status === 'concluido') { concluidos++; } 
+                        else if (status === 'cancelado') { cancelados++; }
+
+                        todosOsPedidosCache.push(pedidoData);
+                    });
+
+                    // Atualiza os cards (Sempre com o total geral)
+                    totalCount.textContent = total;
+                    pendenteCount.textContent = pendentes;
+                    aCaminhoCount.textContent = aCaminho;
+                    concluidoCount.textContent = concluidos;
+                    canceladoCount.textContent = cancelados;
+
+                    // Aplica o último filtro ativo após receber novos dados
+                    aplicarFiltro(filtroAtual);
+                });
+            }
+            
+            function aplicarFiltro(tipoFiltro) {
+                pedidosBody.innerHTML = ''; 
+                filtroAtual = tipoFiltro; // Atualiza o estado global
+
+                // Atualiza o estado visual dos botões
+                document.querySelectorAll('.filter-controls button').forEach(btn => btn.classList.remove('active-filter'));
+                if (tipoFiltro === 'ativos') showActiveBtn.classList.add('active-filter');
+                if (tipoFiltro === 'concluidos') showCompletedBtn.classList.add('active-filter');
+                if (tipoFiltro === 'cancelados') showCancelledBtn.classList.add('active-filter');
+
+
+                let pedidosFiltrados = [];
+                const statusAtivos = ['pendente', 'a caminho'];
+                const statusConcluidos = ['entregue', 'concluido'];
+                const statusCancelados = ['cancelado'];
+                
+                let title = '';
+
+                switch (tipoFiltro) {
+                    case 'ativos':
+                        pedidosFiltrados = todosOsPedidosCache.filter(p => {
+                            const status = (p.status || 'Pendente').toLowerCase().replace(/\s/g, '').replace('ú', 'u');
+                            return statusAtivos.includes(status);
+                        });
+                        title = 'Pedidos Ativos (Pendentes e A Caminho)';
+                        break;
+                    case 'concluidos':
+                        pedidosFiltrados = todosOsPedidosCache.filter(p => {
+                            const status = (p.status || 'Pendente').toLowerCase().replace(/\s/g, '').replace('ú', 'u');
+                            return statusConcluidos.includes(status);
+                        });
+                        title = 'Pedidos Concluídos';
+                        break;
+                    case 'cancelados':
+                        pedidosFiltrados = todosOsPedidosCache.filter(p => {
+                            const status = (p.status || 'Pendente').toLowerCase().replace(/\s/g, '').replace('ú', 'u');
+                            return statusCancelados.includes(status);
+                        });
+                        title = 'Pedidos Cancelados';
+                        break;
+                }
+                
+                document.getElementById('listTitle').textContent = title;
+
+                if (pedidosFiltrados.length === 0) {
+                    pedidosBody.innerHTML = `<tr><td colspan="9" class="no-data">Nenhum pedido na categoria "${title}" encontrado.</td></tr>`;
+                    return;
+                }
+
+                // Ordena e renderiza os pedidos filtrados
+                pedidosFiltrados.sort((a, b) => new Date(b.dataPedido) - new Date(a.dataPedido));
+                pedidosFiltrados.forEach(renderizarLinhaPedido);
+            }
+
+            window.mudarStatusPedido = function(pedidoId, novoStatus) {
+                const statusParaSalvar = (novoStatus === 'Entregue') ? 'Concluído' : novoStatus;
+                
+                if (!confirm(`Tem certeza que deseja mudar o pedido ${pedidoId.substring(1, 6)} para "${statusParaSalvar}"?`)) {
+                    return;
+                }
+
+                db.ref(`pedidos/${pedidoId}`).update({ status: statusParaSalvar })
+                .then(() => {
+                    console.log(`Status do pedido ${pedidoId.substring(1, 6)} atualizado para "${statusParaSalvar}"`);
+                    // A função buscarE_renderizarPedidos (on('value')) cuida da atualização da lista.
+                })
+                .catch((error) => {
+                    alert("Erro ao atualizar o status: " + error.message);
+                });
+            }
+
+            // FUNÇÃO DE RENDERIZAÇÃO COM DATA-LABEL (CRÍTICO PARA RESPONSIVIDADE)
+            function renderizarLinhaPedido(pedido) {
+                const row = pedidosBody.insertRow();
+                
+                const dataPedido = new Date(pedido.dataPedido);
+                const dataFormatada = dataPedido.toLocaleDateString('pt-BR');
+                const horaFormatada = dataPedido.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                
+                const status = pedido.status || 'Pendente';
+                const statusNormalizado = status.replace(/\s/g, '').replace('ú', 'u').toLowerCase(); 
+                let statusClass = 'status-Pendente';
+                
+                if (statusNormalizado.includes('caminho')) { statusClass = 'status-ACaminho'; } 
+                else if (statusNormalizado === 'entregue' || statusNormalizado === 'concluido') { statusClass = 'status-Concluido'; } 
+                else if (statusNormalizado === 'cancelado') { statusClass = 'status-Cancelado'; }
+
+                // Função auxiliar para criar célula com data-label 
+                const createCell = (content, label, className = '') => {
+                    const cell = row.insertCell();
+                    cell.textContent = content;
+                    cell.setAttribute('data-label', label); 
+                    if (className) cell.classList.add(className);
+                    return cell;
+                };
+
+                // Criação das células
+                createCell(pedido.id ? pedido.id.substring(1, 6) : 'N/A', 'ID');
+                createCell(pedido.email || 'Desconhecido', 'Cliente');
+                createCell(pedido.tipoGas || 'N/A', 'Tipo');
+                createCell(pedido.quantidade || 'N/A', 'Qtd.');
+                createCell(pedido.endereco || 'Não Informado', 'Endereço', 'address-cell');
+                createCell(pedido.formaPagamento || 'Não Informado', 'Forma Pag.');
+                createCell(`${dataFormatada} ${horaFormatada}`, 'Data/Hora');
+                
+                // Célula Status
+                const statusCell = row.insertCell();
+                statusCell.setAttribute('data-label', 'Status');
+                const statusSpan = document.createElement('span');
+                statusSpan.textContent = status;
+                statusSpan.classList.add('status', statusClass);
+                statusCell.appendChild(statusSpan);
+                
+                // Dropdown de Ações
+                const actionCell = row.insertCell();
+                if (statusNormalizado === 'concluido' || statusNormalizado === 'cancelado') {
+                    actionCell.textContent = '-'; 
+                    return; 
+                }
+                
+                const dropdown = document.createElement('div');
+                dropdown.classList.add('dropdown');
+                dropdown.onclick = function(event) { event.stopPropagation(); toggleDropdown(this); };
+
+                const dropbtn = document.createElement('button');
+                dropbtn.classList.add('dropbtn');
+                dropbtn.innerHTML = 'Ações ▼';
+                
+                const dropdownContent = document.createElement('div');
+                dropdownContent.classList.add('dropdown-content');
+
+                if (statusNormalizado === 'pendente') {
+                    const btnACaminho = document.createElement('button');
+                    btnACaminho.innerHTML = '🚚 A Caminho';
+                    btnACaminho.onclick = (e) => { e.stopPropagation(); mudarStatusPedido(pedido.id, 'A Caminho'); };
+                    dropdownContent.appendChild(btnACaminho);
+                    
+                    const btnCancelado = document.createElement('button');
+                    btnCancelado.innerHTML = '❌ Cancelar';
+                    btnCancelado.onclick = (e) => { e.stopPropagation(); mudarStatusPedido(pedido.id, 'Cancelado'); };
+                    dropdownContent.appendChild(btnCancelado);
+
+                } else if (statusNormalizado.includes('caminho')) {
+                    const btnEntregue = document.createElement('button');
+                    btnEntregue.innerHTML = '✅ Concluir Entrega'; 
+                    btnEntregue.onclick = (e) => { e.stopPropagation(); mudarStatusPedido(pedido.id, 'Entregue'); }; 
+                    dropdownContent.appendChild(btnEntregue);
+                }
+
+                dropdown.appendChild(dropbtn);
+                dropdown.appendChild(dropdownContent);
+                actionCell.appendChild(dropdown);
+            }
+
+            // --- Inicialização dos Filtros ---
+            showActiveBtn.addEventListener('click', () => aplicarFiltro('ativos'));
+            showCompletedBtn.addEventListener('click', () => aplicarFiltro('concluidos'));
+            showCancelledBtn.addEventListener('click', () => aplicarFiltro('cancelados'));
+            
+        });
+    </script>
+</body>
+</html>
