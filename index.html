@@ -209,7 +209,18 @@
 
         .card-body p { margin: 8px 0; font-size: 0.9rem; }
         .card-body strong { color: var(--primary-color); font-weight: 600; display: inline-block; min-width: 80px; }
-        .client-info { font-size: 1rem; font-weight: 500; color: var(--text-dark); margin-bottom: 10px; }
+        
+        /* Ajuste do Client Info para comportar o WhatsApp */
+        .client-info { 
+            font-size: 0.95rem; 
+            font-weight: 500; 
+            color: var(--text-dark); 
+            margin-bottom: 10px; 
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .client-info p { margin: 5px 0; }
+        .client-info strong { color: var(--secondary-color); font-weight: 600; }
         
         .address-detail {
             border-top: 1px dashed #ddd;
@@ -473,7 +484,7 @@
         // --- ESTADO GLOBAL DA APLICAÇÃO ---
         let todosOsPedidosCache = [];       
         let pedidosFiltradosGlobal = [];    
-        let filtroAtual = 'pendentes'; // VALOR INICIAL AGORA É 'PENDENTES'      
+        let filtroAtual = 'pendentes';      
         const pedidosPorPagina = 12;        
         let paginaAtual = 1;                
 
@@ -502,7 +513,7 @@
             
             // ATUALIZAÇÃO DA REFERÊNCIA DOM
             showPendingBtn = document.getElementById('showPendingBtn');
-            const showEnRouteBtn = document.getElementById('showEnRouteBtn'); // NOVO ID
+            const showEnRouteBtn = document.getElementById('showEnRouteBtn');
             showCompletedBtn = document.getElementById('showCompletedBtn');
             showCancelledBtn = document.getElementById('showCancelledBtn');
 
@@ -522,7 +533,7 @@
 
                     // Atribuição de Eventos de Filtros (USANDO NOVOS IDS E NOVO FILTRO)
                     showPendingBtn.addEventListener('click', () => aplicarFiltro('pendentes'));
-                    showEnRouteBtn.addEventListener('click', () => aplicarFiltro('aCaminho')); // NOVO EVENTO
+                    showEnRouteBtn.addEventListener('click', () => aplicarFiltro('aCaminho'));
                     showCompletedBtn.addEventListener('click', () => aplicarFiltro('concluidos'));
                     showCancelledBtn.addEventListener('click', () => aplicarFiltro('cancelados'));
                 } else {
@@ -612,6 +623,7 @@
                         if (!pedidoData.email) pedidoData.email = 'N/A';
                         if (!pedidoData.tipoGas) pedidoData.tipoGas = 'P13';
                         if (!pedidoData.quantidade) pedidoData.quantidade = 1;
+                        // O 'userWhatsapp' virá direto da base de dados, se existir.
 
                         todosOsPedidosCache.push(pedidoData);
                     });
@@ -633,7 +645,7 @@
             function aplicarFiltro(tipoFiltro) {
                 filtroAtual = tipoFiltro;
 
-                // 1. Atualização Visual dos Filtros (USANDO NOVOS IDS)
+                // 1. Atualização Visual dos Filtros
                 document.querySelectorAll('.filter-controls button').forEach(btn => btn.classList.remove('active-filter'));
                 if (tipoFiltro === 'pendentes') document.getElementById('showPendingBtn').classList.add('active-filter');
                 if (tipoFiltro === 'aCaminho') document.getElementById('showEnRouteBtn').classList.add('active-filter');
@@ -741,7 +753,7 @@
             }
 
 
-            // --- 5. FUNÇÃO DE RENDERIZAÇÃO DO CARD (COM BOTÃO RÁPIDO "ENVIAR") ---
+            // --- 5. FUNÇÃO DE RENDERIZAÇÃO DO CARD (COM WHATSAPP) ---
 
             function renderizarCardPedido(pedido) {
                 const card = document.createElement('div');
@@ -763,14 +775,17 @@
                 card.style.borderTopColor = borderColor;
 
 
-                // HTML do Card
+                // HTML do Card (ADICIONADO O CAMPO WHATSAPP)
                 card.innerHTML = `
                     <div class="card-header">
                         <h3>Pedido #${pedido.id ? pedido.id.substring(1, 6) : 'N/A'}</h3>
                         <span class="status ${statusClass}">${statusDisplay}</span>
                     </div>
 
-                    <div class="client-info">👤 Cliente: ${pedido.email || 'Desconhecido'}</div>
+                    <div class="client-info">
+                        <p style="margin: 5px 0;">👤 Cliente: ${pedido.email || 'Desconhecido'}</p>
+                        <p style="margin: 5px 0;">📱 WhatsApp: <strong>${pedido.whatsappCliente || 'N/A'}</strong></p>
+                    </div>
 
                     <div class="card-body">
                         <p><strong>Produto:</strong> ${pedido.tipoGas || 'P13'} (${pedido.quantidade || 1} unid)</p>
@@ -795,7 +810,7 @@
                     // BOTÃO RÁPIDO: Se o pedido está pendente, adiciona o botão de AÇÃO RÁPIDA 'ENVIAR'
                     if (statusNormalizado === 'pendente') {
                         const sendBtn = document.createElement('button');
-                        sendBtn.innerHTML = '🚚 Enviar';
+                        sendBtn.innerHTML = '🚚 A Caminho';
                         sendBtn.style.backgroundColor = 'var(--info-color)'; // Azul para "A Caminho"
                         sendBtn.onclick = (e) => { 
                             e.stopPropagation(); 
