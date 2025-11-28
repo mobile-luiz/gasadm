@@ -462,438 +462,472 @@
         </div>
     </div>
     
-    <script>
-        // 🚨 CONFIGURAÇÃO DO FIREBASE 🚨
+  <script>
+    // --- CONFIGURAÇÃO DO FIREBASE E INICIALIZAÇÃO ---
     const firebaseConfig = {
-            // !!! Substitua aqui pelas SUAS credenciais !!!
-            apiKey: "AIzaSyCgmVCXYByZINmC_TQGXf8j23khKolRp4I",
-            authDomain: "gasapp-b48b1.firebaseapp.com",
-            databaseURL: "https://gasapp-b48b1-default-rtdb.firebaseio.com",
-            projectId: "gasapp-b48b1",
-            storageBucket: "gasapp-b48b1.firebasestorage.app",
-            messagingSenderId: "91157049244",
-            appId: "1:91157049244:web:d84da8f96637958d1d2259",
-            measurementId: "G-DW6NQ9NCEE"
-        };
+        // !!! Substitua aqui pelas SUAS credenciais !!!
+        apiKey: "AIzaSyCgmVCXYByZINmC_TQGXf8j23khKolRp4I",
+        authDomain: "gasapp-b48b1.firebaseapp.com",
+        databaseURL: "https://gasapp-b48b1-default-rtdb.firebaseio.com",
+        projectId: "gasapp-b48b1",
+        storageBucket: "gasapp-b48b1.firebasestorage.app",
+        messagingSenderId: "91157049244",
+        appId: "1:91157049244:web:d84da8f96637958d1d2259",
+        measurementId: "G-DW6NQ9NCEE"
+    };
 
-        // Inicialização do Firebase e referências
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.database(); 
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database(); 
+    
+    // --- ESTADO GLOBAL DA APLICAÇÃO ---
+    let todosOsPedidosCache = [];      // Armazena todos os pedidos brutos do Firebase
+    let pedidosFiltradosGlobal = [];   // Armazena os pedidos após a aplicação do filtro
+    let filtroAtual = 'pendentes';     // Filtro padrão
+    const pedidosPorPagina = 12;      // Itens por página
+    let paginaAtual = 1;               // Página atual
+    
+    // --- MAPPINGS E AUXILIARES ---
+    const STATUS_MAP = {
+        pendente: 'Pendente',
+        acaminho: 'A Caminho',
+        entregue: 'Concluido',
+        concluido: 'Concluido',
+        cancelado: 'Cancelado',
+    };
+    const normalizeStatus = (status) => (status || 'Pendente').toLowerCase().replace(/\s/g, '').replace('ú', 'u');
+    
+    // --- REFERÊNCIAS DOM ---
+    let pedidosGrid, loginSection, dashboardSection, feedbackMessage, priceModal, priceForm;
+    let showPendingBtn, showEnRouteBtn, showCompletedBtn, showCancelledBtn, prevPageBtn, nextPageBtn, pageInfoSpan;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Inicialização de Referências DOM
+        pedidosGrid = document.getElementById('pedidosGrid');
+        loginSection = document.getElementById('loginSection');
+        dashboardSection = document.getElementById('dashboardSection');
+        feedbackMessage = document.getElementById('feedbackMessage');
+        priceModal = document.getElementById('priceModal');
+        priceForm = document.getElementById('priceForm');
         
-        // --- ESTADO GLOBAL DA APLICAÇÃO ---
-        let todosOsPedidosCache = [];       
-        let pedidosFiltradosGlobal = [];    
-        let filtroAtual = 'pendentes';      
-        const pedidosPorPagina = 12;        
-        let paginaAtual = 1;                
+        showPendingBtn = document.getElementById('showPendingBtn');
+        const showEnRouteBtn = document.getElementById('showEnRouteBtn'); // Mantido como const local
+        showCompletedBtn = document.getElementById('showCompletedBtn');
+        showCancelledBtn = document.getElementById('showCancelledBtn');
 
-        // --- MAPPINGS PARA NORMALIZAÇÃO ---
-        const STATUS_MAP = {
-            pendente: 'Pendente',
-            acaminho: 'A Caminho',
-            entregue: 'Concluido',
-            concluido: 'Concluido',
-            cancelado: 'Cancelado',
-        };
-        const normalizeStatus = (status) => (status || 'Pendente').toLowerCase().replace(/\s/g, '').replace('ú', 'u');
+        prevPageBtn = document.getElementById('prevPageBtn');
+        nextPageBtn = document.getElementById('nextPageBtn');
+        pageInfoSpan = document.getElementById('pageInfo');
         
-        // --- REFERÊNCIAS DOM ---
-        let pedidosGrid, loginSection, dashboardSection, feedbackMessage, priceModal, priceForm;
-        let showPendingBtn, showEnRouteBtn, showCompletedBtn, showCancelledBtn, prevPageBtn, nextPageBtn, pageInfoSpan;
+        // 1. LÓGICA DE AUTENTICAÇÃO
+        auth.onAuthStateChanged((user) => {
+            document.getElementById('loadingMessage').style.display = 'none'; 
+            if (user) {
+                loginSection.style.display = 'none'; 
+                dashboardSection.style.display = 'block'; 
+                document.getElementById('userEmail').textContent = user.email;
+                iniciarEscutasDoDashboard();
 
-        document.addEventListener('DOMContentLoaded', () => {
-            // Inicialização de Referências DOM
-            pedidosGrid = document.getElementById('pedidosGrid');
-            loginSection = document.getElementById('loginSection');
-            dashboardSection = document.getElementById('dashboardSection');
-            feedbackMessage = document.getElementById('feedbackMessage');
-            priceModal = document.getElementById('priceModal');
-            priceForm = document.getElementById('priceForm');
-            
-            // ATUALIZAÇÃO DA REFERÊNCIA DOM
-            showPendingBtn = document.getElementById('showPendingBtn');
-            const showEnRouteBtn = document.getElementById('showEnRouteBtn');
-            showCompletedBtn = document.getElementById('showCompletedBtn');
-            showCancelledBtn = document.getElementById('showCancelledBtn');
-
-            prevPageBtn = document.getElementById('prevPageBtn');
-            nextPageBtn = document.getElementById('nextPageBtn');
-            pageInfoSpan = document.getElementById('pageInfo');
-            
-            // --- 1. LÓGICA DE AUTENTICAÇÃO ---
-            
-            auth.onAuthStateChanged((user) => {
-                document.getElementById('loadingMessage').style.display = 'none'; 
-                if (user) {
-                    loginSection.style.display = 'none'; 
-                    dashboardSection.style.display = 'block'; 
-                    document.getElementById('userEmail').textContent = user.email;
-                    iniciarEscutasDoDashboard();
-
-                    // Atribuição de Eventos de Filtros (USANDO NOVOS IDS E NOVO FILTRO)
-                    showPendingBtn.addEventListener('click', () => aplicarFiltro('pendentes'));
-                    showEnRouteBtn.addEventListener('click', () => aplicarFiltro('aCaminho'));
-                    showCompletedBtn.addEventListener('click', () => aplicarFiltro('concluidos'));
-                    showCancelledBtn.addEventListener('click', () => aplicarFiltro('cancelados'));
-                } else {
-                    dashboardSection.style.display = 'none';
-                    loginSection.style.display = 'block'; 
-                }
-            });
-
-            document.getElementById('loginForm').addEventListener('submit', handleLogin);
-            document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut());
-
-            function handleLogin(e) {
-                e.preventDefault();
-                const email = document.getElementById('email').value;
-                const password = document.getElementById('password').value;
-                const loginBtn = document.getElementById('loginBtn');
-                
-                loginBtn.disabled = true;
-                loginBtn.textContent = 'Aguarde...';
-                
-                auth.signInWithEmailAndPassword(email, password)
-                    .catch(() => { 
-                        feedbackMessage.textContent = "Erro no login: Email ou senha inválidos.";
-                        setTimeout(() => { feedbackMessage.textContent = ''; }, 5000);
-                    })
-                    .finally(() => { loginBtn.disabled = false; loginBtn.textContent = 'Entrar'; });
-            }
-
-
-            // --- 2. GESTÃO DE PREÇO (Botão Ícone) ---
-
-            document.getElementById('priceBtn').addEventListener('click', () => openModal('priceModal'));
-            priceForm.addEventListener('submit', handlePriceUpdate);
-
-            function carregarPrecoAtual() {
-                db.ref('config/preco_gas').on('value', (snapshot) => {
-                    let precoAtual = snapshot.exists() ? snapshot.val() : 0.00;
-                    const precoFormatadoBRL = parseFloat(precoAtual).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                    document.getElementById('currentPrice').textContent = precoFormatadoBRL;
-                    document.getElementById('newPrice').value = parseFloat(precoAtual).toFixed(2); 
-                });
-            }
-            
-            function handlePriceUpdate(e) {
-                e.preventDefault();
-                const novoPreco = parseFloat(document.getElementById('newPrice').value);
-                
-                if (novoPreco > 0) {
-                    db.ref('config').update({ preco_gas: novoPreco })
-                    .then(() => {
-                        alert(`Preço atualizado para R$ ${novoPreco.toFixed(2).replace('.', ',')} com sucesso!`);
-                        closeModal('priceModal');
-                    })
-                    .catch(error => {
-                        alert("Erro ao salvar o preço: " + error.message);
-                    });
-                } else {
-                    alert("Por favor, insira um preço válido.");
-                }
-            }
-
-
-            // --- 3. GESTÃO DE PEDIDOS (Escuta Principal) ---
-
-            function iniciarEscutasDoDashboard() {
-                carregarPrecoAtual(); 
-                
-                pedidosGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center; color: var(--secondary-color);">Buscando dados no Firebase...</p>';
-                
-                db.ref('pedidos').on('value', (snapshot) => {
-                    todosOsPedidosCache = [];
-                    let contadores = { total: 0, pendentes: 0, aCaminho: 0, concluidos: 0, cancelados: 0 };
-
-                    snapshot.forEach((childSnapshot) => {
-                        const pedidoData = childSnapshot.val();
-                        pedidoData.id = childSnapshot.key; 
-                        const status = normalizeStatus(pedidoData.status);
-                        
-                        contadores.total++;
-
-                        if (status === 'pendente') { contadores.pendentes++; } 
-                        // CONTAGEM MANTIDA
-                        else if (status.includes('caminho')) { contadores.aCaminho++; } 
-                        else if (status === 'entregue' || status === 'concluido') { contadores.concluidos++; } 
-                        else if (status === 'cancelado') { contadores.cancelados++; }
-
-                        if (!pedidoData.email) pedidoData.email = 'N/A';
-                        if (!pedidoData.tipoGas) pedidoData.tipoGas = 'P13';
-                        if (!pedidoData.quantidade) pedidoData.quantidade = 1;
-                        // O 'userWhatsapp' virá direto da base de dados, se existir.
-
-                        todosOsPedidosCache.push(pedidoData);
-                    });
-
-                    // Atualiza os Cards de Estatísticas
-                    document.getElementById('totalCount').textContent = contadores.total;
-                    document.getElementById('pendenteCount').textContent = contadores.pendentes;
-                    document.getElementById('aCaminhoCount').textContent = contadores.aCaminho;
-                    document.getElementById('concluidoCount').textContent = contadores.concluidos;
-                    document.getElementById('canceladoCount').textContent = contadores.cancelados;
-
-                    paginaAtual = 1;
-                    aplicarFiltro(filtroAtual);
-                });
-            }
-            
-            // --- 4. FILTRAGEM E PAGINAÇÃO (SEPARANDO PENDENTES E A CAMINHO) ---
-
-            function aplicarFiltro(tipoFiltro) {
-                filtroAtual = tipoFiltro;
-
-                // 1. Atualização Visual dos Filtros
-                document.querySelectorAll('.filter-controls button').forEach(btn => btn.classList.remove('active-filter'));
-                if (tipoFiltro === 'pendentes') document.getElementById('showPendingBtn').classList.add('active-filter');
-                if (tipoFiltro === 'aCaminho') document.getElementById('showEnRouteBtn').classList.add('active-filter');
-                if (tipoFiltro === 'concluidos') document.getElementById('showCompletedBtn').classList.add('active-filter');
-                if (tipoFiltro === 'cancelados') document.getElementById('showCancelledBtn').classList.add('active-filter');
-
-                const statusConcluidos = ['entregue', 'concluido'];
-                const statusCancelados = ['cancelado'];
-                
-                let title = '';
-                
-                // 2. Filtragem dos Dados (LÓGICA SEPARADA)
-                switch (tipoFiltro) {
-                    case 'pendentes':
-                        // FILTRA APENAS status 'pendente'
-                        pedidosFiltradosGlobal = todosOsPedidosCache.filter(p => {
-                            const status = normalizeStatus(p.status);
-                            return status === 'pendente';
-                        });
-                        title = '🔥 Pedidos Pendentes';
-                        break;
-                    case 'aCaminho':
-                        // FILTRA APENAS status 'a caminho'
-                        pedidosFiltradosGlobal = todosOsPedidosCache.filter(p => {
-                            const status = normalizeStatus(p.status);
-                            return status.includes('caminho');
-                        });
-                        title = '🚚 Pedidos A Caminho';
-                        break;
-                    case 'concluidos':
-                        pedidosFiltradosGlobal = todosOsPedidosCache.filter(p => statusConcluidos.includes(normalizeStatus(p.status)));
-                        title = '✅ Pedidos Concluídos';
-                        break;
-                    case 'cancelados':
-                        pedidosFiltradosGlobal = todosOsPedidosCache.filter(p => statusCancelados.includes(normalizeStatus(p.status)));
-                        title = '❌ Pedidos Cancelados';
-                        break;
-                }
-                
-                document.getElementById('listTitle').textContent = title;
-
-                // 3. Ordenação (mais recente primeiro)
-                pedidosFiltradosGlobal.sort((a, b) => new Date(b.dataPedido) - new Date(a.dataPedido));
-                
-                // 4. Renderiza a primeira página do novo filtro
-                paginaAtual = 1;
-                renderizarPaginaAtual();
-            }
-
-            function renderizarPaginaAtual() {
-                pedidosGrid.innerHTML = ''; 
-                const totalPedidos = pedidosFiltradosGlobal.length;
-                const totalPaginas = Math.ceil(totalPedidos / pedidosPorPagina);
-
-                if (totalPedidos === 0) {
-                    pedidosGrid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; padding: 30px; color: var(--secondary-color);">Não há pedidos na categoria "${document.getElementById('listTitle').textContent}" no momento.</p>`;
-                    pageInfoSpan.textContent = '0 pedidos';
-                    prevPageBtn.disabled = true;
-                    nextPageBtn.disabled = true;
-                    return;
-                }
-
-                if (paginaAtual > totalPaginas) paginaAtual = totalPaginas;
-
-                const indiceInicio = (paginaAtual - 1) * pedidosPorPagina;
-                const indiceFim = indiceInicio + pedidosPorPagina;
-                
-                const pedidosParaRenderizar = pedidosFiltradosGlobal.slice(indiceInicio, indiceFim);
-                
-                pedidosParaRenderizar.forEach(renderizarCardPedido);
-
-                pageInfoSpan.textContent = `Página ${paginaAtual} de ${totalPaginas} (${totalPedidos} pedidos)`;
-                prevPageBtn.disabled = paginaAtual <= 1;
-                nextPageBtn.disabled = paginaAtual >= totalPaginas;
-            }
-
-            // Funções de navegação (Globais)
-            window.proximaPagina = function() {
-                const totalPaginas = Math.ceil(pedidosFiltradosGlobal.length / pedidosPorPagina);
-                if (paginaAtual < totalPaginas) {
-                    paginaAtual++;
-                    renderizarPaginaAtual();
-                }
-            }
-
-            window.paginaAnterior = function() {
-                if (paginaAtual > 1) {
-                    paginaAtual--;
-                    renderizarPaginaAtual();
-                }
-            }
-            
-            // Função global para mudar o status (chamada pelo dropdown)
-            window.mudarStatusPedido = function(pedidoId, novoStatus) {
-                const statusParaSalvar = (novoStatus === 'Entregue') ? 'Concluido' : novoStatus;
-                
-                if (!confirm(`Tem certeza que deseja mudar o pedido #${pedidoId.substring(1, 6)} para "${statusParaSalvar}"?`)) {
-                    return;
-                }
-
-                db.ref(`pedidos/${pedidoId}`).update({ status: statusParaSalvar })
-                .catch((error) => {
-                    alert("Erro ao atualizar o status: " + error.message);
-                });
-            }
-
-
-            // --- 5. FUNÇÃO DE RENDERIZAÇÃO DO CARD (COM WHATSAPP) ---
-
-            function renderizarCardPedido(pedido) {
-                const card = document.createElement('div');
-                card.classList.add('pedido-card');
-                
-                const dataPedido = new Date(pedido.dataPedido);
-                const dataFormatada = dataPedido.toLocaleDateString('pt-BR');
-                const horaFormatada = dataPedido.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                
-                const statusNormalizado = normalizeStatus(pedido.status);
-                const statusDisplay = STATUS_MAP[statusNormalizado] || 'Pendente';
-                let statusClass = `status-${statusDisplay.replace(/\s/g, '')}`; 
-                
-                let borderColor = 'var(--primary-color)';
-                if (statusNormalizado === 'pendente') borderColor = 'var(--warning-color)';
-                else if (statusNormalizado.includes('caminho')) borderColor = 'var(--info-color)';
-                else if (statusNormalizado === 'entregue' || statusNormalizado === 'concluido') borderColor = 'var(--success-color)';
-                else if (statusNormalizado === 'cancelado') borderColor = 'var(--danger-color)';
-                card.style.borderTopColor = borderColor;
-
-
-                // HTML do Card (ADICIONADO O CAMPO WHATSAPP)
-                card.innerHTML = `
-                    <div class="card-header">
-                        <h3>Pedido #${pedido.id ? pedido.id.substring(1, 6) : 'N/A'}</h3>
-                        <span class="status ${statusClass}">${statusDisplay}</span>
-                    </div>
-
-                    <div class="client-info">
-                        <p style="margin: 5px 0;">👤 Cliente: ${pedido.email || 'Desconhecido'}</p>
-                        <p style="margin: 5px 0;">📱 WhatsApp: <strong>${pedido.whatsappCliente || 'N/A'}</strong></p>
-                    </div>
-
-                    <div class="card-body">
-                        <p><strong>Produto:</strong> ${pedido.tipoGas || 'P13'} (${pedido.quantidade || 1} unid)</p>
-                        <p><strong>Total:</strong> R$ ${(pedido.valorTotal || 0).toFixed(2).replace('.', ',')}</p>
-                        <p><strong>Pagamento:</strong> ${pedido.formaPagamento || 'Não Informado'}</p>
-                        <p><strong>Horário:</strong> ${dataFormatada} ${horaFormatada}</p>
-                    </div>
-
-                    <div class="address-detail">
-                        <p>📍 Endereço: ${pedido.endereco || 'Endereço não informado'}</p>
-                    </div>
-
-                    <div class="action-container" id="actions-${pedido.id}">
-                        </div>
-                `;
-                
-                // Adiciona o Dropdown de Ações E Botão Rápido
-                const actionContainer = card.querySelector(`#actions-${pedido.id}`);
-
-                if (statusNormalizado !== 'concluido' && statusNormalizado !== 'cancelado') {
-                    
-                    // BOTÃO RÁPIDO: Se o pedido está pendente, adiciona o botão de AÇÃO RÁPIDA 'ENVIAR'
-                    if (statusNormalizado === 'pendente') {
-                        const sendBtn = document.createElement('button');
-                        sendBtn.innerHTML = '🚚 A Caminho';
-                        sendBtn.style.backgroundColor = 'var(--info-color)'; // Azul para "A Caminho"
-                        sendBtn.onclick = (e) => { 
-                            e.stopPropagation(); 
-                            mudarStatusPedido(pedido.id, 'A Caminho'); 
-                        };
-                        actionContainer.appendChild(sendBtn);
-                    }
-                    
-                    // Adiciona o Dropdown (que agora ocupa o restante do espaço)
-                    const dropdown = createActionDropdown(pedido.id, statusNormalizado);
-                    actionContainer.appendChild(dropdown);
-                    
-                } else {
-                    // Pedidos finalizados
-                    actionContainer.innerHTML = `<button disabled style="width:100%; background-color:#ccc; font-weight:500;">Status Finalizado</button>`;
-                    actionContainer.style.display = 'block'; // Remove o flexbox para o botão único
-                }
-
-                pedidosGrid.appendChild(card);
-            }
-
-            function createActionDropdown(id, statusNormalizado) {
-                const dropdown = document.createElement('div');
-                dropdown.classList.add('dropdown');
-                
-                dropdown.onclick = function(event) { event.stopPropagation(); toggleDropdown(this); };
-
-                const dropbtn = document.createElement('button');
-                dropbtn.classList.add('dropbtn');
-                dropbtn.innerHTML = 'Mais Ações ▼'; 
-                
-                const dropdownContent = document.createElement('div');
-                dropdownContent.classList.add('dropdown-content');
-
-                if (statusNormalizado === 'pendente') {
-                    // Para Pendente: Apenas 'Cancelar Pedido' permanece no dropdown (o 'Enviar' é um botão rápido)
-                    dropdownContent.appendChild(createActionButton('❌ Cancelar Pedido', id, 'Cancelado'));
-                } else if (statusNormalizado.includes('caminho')) {
-                    // Para A Caminho: Permanece as duas ações principais
-                    dropdownContent.appendChild(createActionButton('✅ Concluir Entrega', id, 'Entregue'));
-                    dropdownContent.appendChild(createActionButton('❌ Cancelar Pedido', id, 'Cancelado'));
-                }
-
-                dropdown.appendChild(dropbtn);
-                dropdown.appendChild(dropdownContent);
-                return dropdown;
-            }
-
-            function createActionButton(text, id, status) {
-                const btn = document.createElement('button');
-                btn.innerHTML = text;
-                btn.onclick = (e) => { e.stopPropagation(); mudarStatusPedido(id, status); };
-                return btn;
-            }
-
-
-            // --- 6. FUNÇÕES AUXILIARES DE UI E EVENT LISTENERS ---
-
-            window.toggleDropdown = function(element) {
-                document.querySelectorAll(".dropdown-content.show-dropdown").forEach(openDropdown => {
-                    if (openDropdown !== element.querySelector(".dropdown-content")) {
-                        openDropdown.classList.remove("show-dropdown");
-                    }
-                });
-                element.querySelector(".dropdown-content").classList.toggle("show-dropdown");
-            }
-            window.openModal = function(modalId) {
-                document.getElementById(modalId).style.display = "block";
-            }
-            window.closeModal = function(modalId) {
-                document.getElementById(modalId).style.display = "none";
-            }
-
-            // Fechar dropdowns e modais clicando fora
-            document.onclick = function(event) {
-                if (!event.target.matches('.dropbtn')) {
-                    document.querySelectorAll(".dropdown-content.show-dropdown").forEach(openDropdown => {
-                        openDropdown.classList.remove("show-dropdown");
-                    });
-                }
-                if (event.target == priceModal) closeModal('priceModal');
+                // Atribuição de Eventos de Filtros
+                showPendingBtn.addEventListener('click', () => aplicarFiltro('pendentes'));
+                showEnRouteBtn.addEventListener('click', () => aplicarFiltro('aCaminho'));
+                showCompletedBtn.addEventListener('click', () => aplicarFiltro('concluidos'));
+                showCancelledBtn.addEventListener('click', () => aplicarFiltro('cancelados'));
+            } else {
+                dashboardSection.style.display = 'none';
+                loginSection.style.display = 'block'; 
             }
         });
-    </script>
+
+        document.getElementById('loginForm').addEventListener('submit', handleLogin);
+        document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut());
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('loginBtn');
+            
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Aguarde...';
+            
+            auth.signInWithEmailAndPassword(email, password)
+                .catch(() => { 
+                    feedbackMessage.textContent = "Erro no login: Email ou senha inválidos.";
+                    setTimeout(() => { feedbackMessage.textContent = ''; }, 5000);
+                })
+                .finally(() => { loginBtn.disabled = false; loginBtn.textContent = 'Entrar'; });
+        }
+
+
+        // 2. GESTÃO DE PREÇO
+        document.getElementById('priceBtn').addEventListener('click', () => openModal('priceModal'));
+        priceForm.addEventListener('submit', handlePriceUpdate);
+
+        function carregarPrecoAtual() {
+            db.ref('config/preco_gas').on('value', (snapshot) => {
+                let precoAtual = snapshot.exists() ? snapshot.val() : 0.00;
+                const precoFormatadoBRL = parseFloat(precoAtual).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                document.getElementById('currentPrice').textContent = precoFormatadoBRL;
+                document.getElementById('newPrice').value = parseFloat(precoAtual).toFixed(2); 
+            });
+        }
+        
+        function handlePriceUpdate(e) {
+            e.preventDefault();
+            const novoPreco = parseFloat(document.getElementById('newPrice').value);
+            
+            if (novoPreco > 0) {
+                db.ref('config').update({ preco_gas: novoPreco })
+                .then(() => {
+                    alert(`Preço atualizado para R$ ${novoPreco.toFixed(2).replace('.', ',')} com sucesso!`);
+                    closeModal('priceModal');
+                })
+                .catch(error => {
+                    alert("Erro ao salvar o preço: " + error.message);
+                });
+            } else {
+                alert("Por favor, insira um preço válido.");
+            }
+        }
+
+
+        // 3. GESTÃO DE PEDIDOS (Escuta Principal)
+        function iniciarEscutasDoDashboard() {
+            carregarPrecoAtual(); 
+            
+            pedidosGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center; color: var(--secondary-color);">Buscando dados no Firebase...</p>';
+            
+            db.ref('pedidos').on('value', (snapshot) => {
+                todosOsPedidosCache = [];
+                let contadores = { total: 0, pendentes: 0, aCaminho: 0, concluidos: 0, cancelados: 0 };
+
+                snapshot.forEach((childSnapshot) => {
+                    const pedidoData = childSnapshot.val();
+                    pedidoData.id = childSnapshot.key; 
+                    const status = normalizeStatus(pedidoData.status);
+                    
+                    contadores.total++;
+
+                    if (status === 'pendente') { contadores.pendentes++; } 
+                    else if (status.includes('caminho')) { contadores.aCaminho++; } 
+                    else if (status === 'entregue' || status === 'concluido') { contadores.concluidos++; } 
+                    else if (status === 'cancelado') { contadores.cancelados++; }
+
+                    // Default values if missing
+                    if (!pedidoData.email) pedidoData.email = 'N/A';
+                    if (!pedidoData.tipoGas) pedidoData.tipoGas = 'P13';
+                    if (!pedidoData.quantidade) pedidoData.quantidade = 1;
+
+                    todosOsPedidosCache.push(pedidoData);
+                });
+
+                // Atualiza os Cards de Estatísticas
+                document.getElementById('totalCount').textContent = contadores.total;
+                document.getElementById('pendenteCount').textContent = contadores.pendentes;
+                document.getElementById('aCaminhoCount').textContent = contadores.aCaminho;
+                document.getElementById('concluidoCount').textContent = contadores.concluidos;
+                document.getElementById('canceladoCount').textContent = contadores.cancelados;
+
+                paginaAtual = 1;
+                aplicarFiltro(filtroAtual);
+            });
+        }
+        
+        // 4. FILTRAGEM E PAGINAÇÃO
+
+        function aplicarFiltro(tipoFiltro) {
+            filtroAtual = tipoFiltro;
+
+            // 1. Atualização Visual dos Filtros
+            document.querySelectorAll('.filter-controls button').forEach(btn => btn.classList.remove('active-filter'));
+            if (tipoFiltro === 'pendentes') document.getElementById('showPendingBtn').classList.add('active-filter');
+            if (tipoFiltro === 'aCaminho') document.getElementById('showEnRouteBtn').classList.add('active-filter');
+            if (tipoFiltro === 'concluidos') document.getElementById('showCompletedBtn').classList.add('active-filter');
+            if (tipoFiltro === 'cancelados') document.getElementById('showCancelledBtn').classList.add('active-filter');
+
+            const statusConcluidos = ['entregue', 'concluido'];
+            const statusCancelados = ['cancelado'];
+            let title = '';
+            
+            // 2. Filtragem dos Dados
+            switch (tipoFiltro) {
+                case 'pendentes':
+                    pedidosFiltradosGlobal = todosOsPedidosCache.filter(p => normalizeStatus(p.status) === 'pendente');
+                    title = '🔥 Pedidos Pendentes';
+                    break;
+                case 'aCaminho':
+                    pedidosFiltradosGlobal = todosOsPedidosCache.filter(p => normalizeStatus(p.status).includes('caminho'));
+                    title = '🚚 Pedidos A Caminho';
+                    break;
+                case 'concluidos':
+                    pedidosFiltradosGlobal = todosOsPedidosCache.filter(p => statusConcluidos.includes(normalizeStatus(p.status)));
+                    title = '✅ Pedidos Concluídos';
+                    break;
+                case 'cancelados':
+                    pedidosFiltradosGlobal = todosOsPedidosCache.filter(p => statusCancelados.includes(normalizeStatus(p.status)));
+                    title = '❌ Pedidos Cancelados';
+                    break;
+            }
+            
+            document.getElementById('listTitle').textContent = title;
+
+            // 3. Ordenação (mais recente primeiro)
+            pedidosFiltradosGlobal.sort((a, b) => new Date(b.dataPedido) - new Date(a.dataPedido));
+            
+            // 4. Renderiza a primeira página do novo filtro
+            paginaAtual = 1;
+            renderizarPaginaAtual();
+        }
+
+        function renderizarPaginaAtual() {
+            pedidosGrid.innerHTML = ''; 
+            const totalPedidos = pedidosFiltradosGlobal.length;
+            const totalPaginas = Math.ceil(totalPedidos / pedidosPorPagina);
+
+            if (totalPedidos === 0) {
+                pedidosGrid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; padding: 30px; color: var(--secondary-color);">Não há pedidos na categoria "${document.getElementById('listTitle').textContent}" no momento.</p>`;
+                pageInfoSpan.textContent = '0 pedidos';
+                prevPageBtn.disabled = true;
+                nextPageBtn.disabled = true;
+                return;
+            }
+
+            if (paginaAtual > totalPaginas) paginaAtual = totalPaginas;
+
+            const indiceInicio = (paginaAtual - 1) * pedidosPorPagina;
+            const indiceFim = indiceInicio + pedidosPorPagina;
+            
+            const pedidosParaRenderizar = pedidosFiltradosGlobal.slice(indiceInicio, indiceFim);
+            
+            pedidosParaRenderizar.forEach(renderizarCardPedido);
+
+            pageInfoSpan.textContent = `Página ${paginaAtual} de ${totalPaginas} (${totalPedidos} pedidos)`;
+            prevPageBtn.disabled = paginaAtual <= 1;
+            nextPageBtn.disabled = paginaAtual >= totalPaginas;
+        }
+
+        // Funções de navegação (Globais)
+        window.proximaPagina = function() {
+            const totalPaginas = Math.ceil(pedidosFiltradosGlobal.length / pedidosPorPagina);
+            if (paginaAtual < totalPaginas) {
+                paginaAtual++;
+                renderizarPaginaAtual();
+            }
+        }
+
+        window.paginaAnterior = function() {
+            if (paginaAtual > 1) {
+                paginaAtual--;
+                renderizarPaginaAtual();
+            }
+        }
+        
+        // --- 5. LÓGICA DO WHATSAPP ---
+        
+        /**
+         * Abre o WhatsApp do cliente com uma mensagem de que o pedido está a caminho.
+         * @param {Object} pedido - O objeto do pedido com os dados do cliente e da compra.
+         */
+        function abrirWhatsappAvisoACaminho(pedido) {
+            const whatsapp = pedido.whatsappCliente;
+            const endereco = pedido.endereco || 'o endereço cadastrado';
+            const produto = `${pedido.quantidade || 1} x ${pedido.tipoGas || 'Gás P13'}`;
+            const valor = (pedido.valorTotal || 0).toFixed(2).replace('.', ',');
+            
+            const numeroLimpo = whatsapp ? whatsapp.replace(/\D/g, '') : null;
+            
+            if (!numeroLimpo || numeroLimpo.length < 10) {
+                console.warn("Número de WhatsApp do cliente inválido ou não encontrado. Status alterado, mas não foi possível enviar a mensagem.");
+                alert("Atenção: Número de WhatsApp do cliente não encontrado/inválido. Status alterado, mas a mensagem automática não foi enviada.");
+                return;
+            }
+            
+            const mensagem = `
+Olá, ${pedido.email || 'Cliente'}!
+
+Seu pedido #${pedido.id ? pedido.id.substring(1, 6) : 'N/A'} (Produto: ${produto}, Total: R$ ${valor}) **está a caminho**! 🚚
+
+Entrega no endereço: ${endereco}
+
+Aguarde o entregador! Agradecemos a preferência.
+            `.trim();
+
+            const whatsappUrl = `https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
+            
+            window.open(whatsappUrl, '_blank');
+        }
+
+        // Função global para mudar o status (chamada pelo dropdown)
+        window.mudarStatusPedido = function(pedidoId, novoStatus) {
+            const statusParaSalvar = (novoStatus === 'Entregue') ? 'Concluido' : novoStatus;
+            const isACaminho = statusParaSalvar.toLowerCase().includes('caminho');
+            
+            const confirmMessage = isACaminho 
+                ? `Tem certeza que deseja mudar o pedido #${pedidoId.substring(1, 6)} para "${statusParaSalvar}" e abrir o WhatsApp para notificar o cliente?`
+                : `Tem certeza que deseja mudar o pedido #${pedidoId.substring(1, 6)} para "${statusParaSalvar}"?`;
+
+
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Busca o objeto completo do pedido na cache antes de atualizar
+            const pedido = todosOsPedidosCache.find(p => p.id === pedidoId);
+            
+            db.ref(`pedidos/${pedidoId}`).update({ status: statusParaSalvar })
+            .then(() => {
+                // Se o status for 'A Caminho', chama a função do WhatsApp
+                if (isACaminho && pedido) {
+                    abrirWhatsappAvisoACaminho(pedido); 
+                }
+                // Não precisa de alert de sucesso, pois a escuta do Firebase atualizará a UI automaticamente
+            })
+            .catch((error) => {
+                alert("Erro ao atualizar o status: " + error.message);
+            });
+        }
+
+
+        // 6. FUNÇÃO DE RENDERIZAÇÃO DO CARD
+        function renderizarCardPedido(pedido) {
+            const card = document.createElement('div');
+            card.classList.add('pedido-card');
+            
+            const dataPedido = new Date(pedido.dataPedido);
+            const dataFormatada = dataPedido.toLocaleDateString('pt-BR');
+            const horaFormatada = dataPedido.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            
+            const statusNormalizado = normalizeStatus(pedido.status);
+            const statusDisplay = STATUS_MAP[statusNormalizado] || 'Pendente';
+            let statusClass = `status-${statusDisplay.replace(/\s/g, '')}`; 
+            
+            let borderColor = 'var(--primary-color)';
+            if (statusNormalizado === 'pendente') borderColor = 'var(--warning-color)';
+            else if (statusNormalizado.includes('caminho')) borderColor = 'var(--info-color)';
+            else if (statusNormalizado === 'entregue' || statusNormalizado === 'concluido') borderColor = 'var(--success-color)';
+            else if (statusNormalizado === 'cancelado') borderColor = 'var(--danger-color)';
+            card.style.borderTopColor = borderColor;
+
+
+            // HTML do Card 
+            card.innerHTML = `
+                <div class="card-header">
+                    <h3>Pedido #${pedido.id ? pedido.id.substring(1, 6) : 'N/A'}</h3>
+                    <span class="status ${statusClass}">${statusDisplay}</span>
+                </div>
+
+                <div class="client-info">
+                    <p style="margin: 5px 0;">👤 Cliente: ${pedido.email || 'Desconhecido'}</p>
+                    <p style="margin: 5px 0;">📱 WhatsApp: <strong>${pedido.whatsappCliente || 'N/A'}</strong></p>
+                </div>
+
+                <div class="card-body">
+                    <p><strong>Produto:</strong> ${pedido.tipoGas || 'P13'} (${pedido.quantidade || 1} unid)</p>
+                    <p><strong>Total:</strong> R$ ${(pedido.valorTotal || 0).toFixed(2).replace('.', ',')}</p>
+                    <p><strong>Pagamento:</strong> ${pedido.formaPagamento || 'Não Informado'}</p>
+                    <p><strong>Horário:</strong> ${dataFormatada} ${horaFormatada}</p>
+                </div>
+
+                <div class="address-detail">
+                    <p>📍 Endereço: ${pedido.endereco || 'Endereço não informado'}</p>
+                </div>
+
+                <div class="action-container" id="actions-${pedido.id}">
+                </div>
+            `;
+            
+            const actionContainer = card.querySelector(`#actions-${pedido.id}`);
+
+            if (statusNormalizado !== 'concluido' && statusNormalizado !== 'cancelado') {
+                
+                // BOTÃO RÁPIDO: "A Caminho" para pedidos pendentes
+                if (statusNormalizado === 'pendente') {
+                    const sendBtn = document.createElement('button');
+                    sendBtn.innerHTML = '🚚 A Caminho';
+                    sendBtn.style.backgroundColor = 'var(--info-color)'; 
+                    sendBtn.onclick = (e) => { 
+                        e.stopPropagation(); 
+                        // Chama a função mudarStatusPedido que fará a atualização e abrirá o WhatsApp
+                        mudarStatusPedido(pedido.id, 'A Caminho'); 
+                    };
+                    actionContainer.appendChild(sendBtn);
+                }
+                
+                // Adiciona o Dropdown (que agora ocupa o restante do espaço)
+                const dropdown = createActionDropdown(pedido.id, statusNormalizado);
+                actionContainer.appendChild(dropdown);
+                
+            } else {
+                // Pedidos finalizados
+                actionContainer.innerHTML = `<button disabled style="width:100%; background-color:#ccc; font-weight:500;">Status Finalizado</button>`;
+                actionContainer.style.display = 'block'; 
+            }
+
+            pedidosGrid.appendChild(card);
+        }
+
+        function createActionDropdown(id, statusNormalizado) {
+            const dropdown = document.createElement('div');
+            dropdown.classList.add('dropdown');
+            
+            dropdown.onclick = function(event) { event.stopPropagation(); toggleDropdown(this); };
+
+            const dropbtn = document.createElement('button');
+            dropbtn.classList.add('dropbtn');
+            dropbtn.innerHTML = 'Mais Ações ▼'; 
+            
+            const dropdownContent = document.createElement('div');
+            dropdownContent.classList.add('dropdown-content');
+
+            // Ações no Dropdown
+            if (statusNormalizado === 'pendente') {
+                dropdownContent.appendChild(createActionButton('❌ Cancelar Pedido', id, 'Cancelado'));
+            } else if (statusNormalizado.includes('caminho')) {
+                dropdownContent.appendChild(createActionButton('✅ Concluir Entrega', id, 'Entregue'));
+                dropdownContent.appendChild(createActionButton('❌ Cancelar Pedido', id, 'Cancelado'));
+            }
+
+            dropdown.appendChild(dropbtn);
+            dropdown.appendChild(dropdownContent);
+            return dropdown;
+        }
+
+        function createActionButton(text, id, status) {
+            const btn = document.createElement('button');
+            btn.innerHTML = text;
+            btn.onclick = (e) => { e.stopPropagation(); mudarStatusPedido(id, status); };
+            return btn;
+        }
+
+
+        // 7. FUNÇÕES AUXILIARES DE UI E EVENT LISTENERS
+
+        window.toggleDropdown = function(element) {
+            document.querySelectorAll(".dropdown-content.show-dropdown").forEach(openDropdown => {
+                if (openDropdown !== element.querySelector(".dropdown-content")) {
+                    openDropdown.classList.remove("show-dropdown");
+                }
+            });
+            element.querySelector(".dropdown-content").classList.toggle("show-dropdown");
+        }
+        window.openModal = function(modalId) {
+            document.getElementById(modalId).style.display = "block";
+        }
+        window.closeModal = function(modalId) {
+            document.getElementById(modalId).style.display = "none";
+        }
+
+        // Fechar dropdowns e modais clicando fora
+        document.onclick = function(event) {
+            if (!event.target.matches('.dropbtn')) {
+                document.querySelectorAll(".dropdown-content.show-dropdown").forEach(openDropdown => {
+                    openDropdown.classList.remove("show-dropdown");
+                });
+            }
+            if (event.target == priceModal) closeModal('priceModal');
+        }
+    });
+</script>
 </body>
 </html>
